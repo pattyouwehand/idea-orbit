@@ -9,18 +9,41 @@ export default function IdeaDetail() {
   ])
   const [input, setInput] = useState("")
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!input.trim()) return;
+
     const newMessages = [...messages, { role: "user", content: input }];
     setMessages(newMessages);
     setInput("");
-    // Mock AI-response (vervang later met /api/ai)
-    setTimeout(() => {
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "Goede stap! Misschien kun je nu een korte beschrijving van je doelgroep toevoegen 🚀" }
-      ])
-    }, 1000)
+
+    const res = await fetch("/api/ai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: newMessages }),
+    });
+
+    if (!res.body) {
+      // fallback: volledige response in één keer
+      const text = await res.text();
+      setMessages((prev) => [...prev, { role: "assistant", content: text }]);
+      return;
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let assistantText = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      assistantText += decoder.decode(value, { stream: true });
+      // update het laatste assistant-bericht realtime (replace of append)
+      setMessages((prev) => {
+        // filter eventuele oude assistant draft
+        const withoutDraft = prev.filter((m) => m.role !== "assistant" || m.content !== assistantText);
+        return [...withoutDraft, { role: "assistant", content: assistantText }];
+      });
+    }
   }
 
   return (
